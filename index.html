@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Campus Pulse</title>
+    <link rel="manifest" href="/manifest.json" />
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-KDW0TE54JN');
+    </script>
+  </head>
+  <body>
+    <div id="root">
+      <div id="loading-screen" style="display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; flex-direction: column; gap: 20px;">
+        <p>Loading Campus Pulse...</p>
+        <div id="error-display" style="color: red; font-size: 12px; max-width: 80%; word-break: break-all; text-align: center;"></div>
+      </div>
+    </div>
+    <script>
+      window.onerror = function(message, source, lineno, colno, error) {
+        const display = document.getElementById('error-display');
+        if (display) {
+          display.innerText = 'Error: ' + message + ' at ' + source + ':' + lineno;
+        }
+        return false;
+      };
+      window.onunhandledrejection = function(event) {
+        const display = document.getElementById('error-display');
+        if (display) {
+          display.innerText = 'Promise Rejection: ' + event.reason;
+        }
+      };
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

@@ -1,0 +1,5 @@
+{
+  "name": "Campus Pulse",
+  "description": "A real-time community notice board for college events and lost & found items.",
+  "requestFramePermissions": ["notifications"]
+}
