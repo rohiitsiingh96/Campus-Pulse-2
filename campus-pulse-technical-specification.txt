@@ -1,0 +1,487 @@
+CAMPUS PULSE
+TECHNICAL PROJECT SPECIFICATION
+================================
+
+1. PROJECT OVERVIEW
+-------------------
+Campus Pulse is a real-time digital campus notice board. It enables students
+and campus clubs to publish and discover campus events, report lost and found
+items, search posts, register for events through external links, and receive
+live updates without manually refreshing the browser.
+
+The main frontend application is implemented in:
+src/App.tsx
+
+The backend server is implemented in:
+server.ts
+
+
+2. TECHNOLOGY STACK
+-------------------
+
+Frontend:
+- React 19
+- TypeScript 5.8
+- Vite 6
+- Tailwind CSS 4
+- Framer Motion and Motion for animations
+- Lucide React for icons
+- date-fns for date parsing and calculations
+- React DatePicker for date selection
+- clsx and tailwind-merge for conditional styling
+
+Backend:
+- Node.js
+- Express 4
+- Socket.IO 4
+- better-sqlite3
+- SQLite
+- node-cron
+- dotenv
+- tsx
+
+Testing and development:
+- Vitest
+- TypeScript compiler
+- Vite production build
+
+
+3. SYSTEM ARCHITECTURE
+----------------------
+The system uses a full-stack client-server architecture:
+
+Browser
+  |
+  | REST API requests and Socket.IO events
+  v
+Express and Socket.IO server
+  |
+  v
+SQLite database
+
+Frontend responsibilities:
+- Render the user interface.
+- Manage React state.
+- Submit and display posts.
+- Search and filter records.
+- Upload and compress images.
+- Display notifications and modal dialogs.
+- Manage theme preferences.
+- Receive real-time updates.
+
+Backend responsibilities:
+- Expose REST API endpoints.
+- Validate event data.
+- Read and write SQLite records.
+- Apply authorization checks.
+- Manage reports and administration.
+- Broadcast real-time changes.
+- Delete expired content automatically.
+
+
+4. MAIN FEATURES
+----------------
+
+4.1 Campus Event Management
+Users can create events containing:
+- Event title
+- Organizer
+- Location
+- Description
+- Poster image
+- Start date and time
+- End date and time
+- Registration deadline
+- Registration URL
+- Author email
+
+Event categories:
+- Technical
+- Cultural
+- Sports
+- Other
+
+Event modes:
+- Online
+- Offline
+- Both
+
+Events display their organizer, category, mode, date, location, registration
+status, poster, countdown, and lifecycle status.
+
+4.2 Lost and Found
+Users can publish lost or found item posts containing:
+- Item title
+- Description
+- Location
+- Contact number
+- Contact email
+- Lost or found status
+
+Supported statuses:
+- lost
+- found
+- completed
+
+4.3 Search and Filtering
+The application supports:
+- Text search by title.
+- Search by location.
+- Search by organizer.
+- Date filtering.
+- Separate event and lost-and-found tabs.
+- Pinned post prioritization.
+- Multi-day event date matching.
+
+4.4 Real-Time Synchronization
+Socket.IO events used by the application:
+- new_post
+- posts_updated
+
+When a post is created, the server stores it and broadcasts new_post.
+When a post is deleted, pinned, completed, or removed by cleanup, the server
+broadcasts posts_updated so connected clients can refresh their data.
+
+4.5 Admin Dashboard
+The admin dashboard allows authorized administrators to:
+- View posts.
+- View reported posts.
+- View report counts and reasons.
+- Pin and unpin posts.
+- Delete posts.
+- Review post metadata.
+
+Current administrator email:
+admin@cuchd.in
+
+4.6 Club Dashboard
+The club dashboard displays posts created by the CSQUARE club account.
+
+Current club email:
+csquare@cuchd.in
+
+The dashboard displays total posts, total views, registrations, and club
+posts. Total views and registrations are currently placeholder values because
+no internal analytics or registration tracking API is implemented.
+
+4.7 Post Reporting
+Users can report posts by submitting a reason. Reports contain:
+- Report ID
+- Related post ID
+- Report reason
+- Reporter email
+- Creation timestamp
+
+4.8 Theme Support
+The application supports light and dark themes. The selected theme is stored
+in browser localStorage under:
+campus_pulse_theme
+
+4.9 Image Upload
+Images are:
+- Read using FileReader.
+- Converted to Base64 data URLs.
+- Compressed if larger than 500 KB.
+- Resized to a maximum dimension of approximately 1200 by 1200 pixels.
+- Compressed using JPEG quality approximately 70 percent.
+
+The server accepts JSON request bodies up to 10 MB. Image data is stored in
+the SQLite database as text.
+
+
+5. DATABASE SPECIFICATION
+-------------------------
+Database file:
+campus_pulse.db
+
+5.1 posts table
+
+id                    INTEGER PRIMARY KEY AUTOINCREMENT
+type                  TEXT NOT NULL
+title                 TEXT NOT NULL
+organizer             TEXT
+location              TEXT NOT NULL
+description           TEXT
+poster                TEXT
+eventDate             TEXT
+endDate               TEXT
+registrationDeadline  TEXT
+registrationLink      TEXT
+status                TEXT
+contactNumber         TEXT
+authorEmail           TEXT
+completedAt           TEXT
+createdAt             TEXT DEFAULT CURRENT_TIMESTAMP
+isPinned              INTEGER DEFAULT 0
+
+5.2 reports table
+
+id             INTEGER PRIMARY KEY AUTOINCREMENT
+postId         INTEGER NOT NULL
+reason         TEXT NOT NULL
+reporterEmail  TEXT NOT NULL
+createdAt      TEXT DEFAULT CURRENT_TIMESTAMP
+
+The reports table references posts through postId.
+
+
+6. REST API SPECIFICATION
+-------------------------
+
+GET /api/health
+Returns server status, database connection status, database table names, and
+the current environment.
+
+GET /api/posts
+Returns currently visible posts. Results are ordered by pinned status and
+creation date.
+
+POST /api/posts
+Creates an event or lost-and-found post.
+
+DELETE /api/posts/:id
+Deletes a post and its associated reports.
+
+PATCH /api/posts/:id/status
+Updates a post status, including marking an event as completed.
+
+POST /api/posts/report
+Creates a report for a post.
+
+GET /api/admin/posts
+Returns posts with report details. Requires:
+Authorization: admin-secret
+
+GET /api/admin/reports
+Returns all reports. Requires:
+Authorization: admin-secret
+
+PATCH /api/admin/posts/:id/pin
+Pins or unpins a post. Requires:
+Authorization: admin-secret
+
+DELETE /api/admin/posts/:id
+Deletes a post through the administrative interface. Requires:
+Authorization: admin-secret
+
+
+7. EVENT VALIDATION RULES
+-------------------------
+- Event start time must be earlier than event end time.
+- Registration deadline cannot be later than event end time.
+- Invalid dates are rejected with an HTTP 400 response.
+- Client and server both perform important date validation.
+- All timestamps are normalized to UTC ISO format.
+- A user cannot create multiple posts within one minute.
+
+Default event values:
+- Event start: 09:30 UTC
+- Event end: 16:25 UTC
+- Registration deadline: 17:00 UTC
+
+
+8. AUTOMATIC DATA CLEANUP
+-------------------------
+The server runs a node-cron task every hour:
+
+Cron expression:
+0 * * * *
+
+Cleanup rules:
+- Events ending four or more calendar days ago are deleted.
+- Lost-and-found posts older than 72 hours are deleted.
+- Reports linked to deleted posts are also deleted.
+- SQLite VACUUM is executed when cleanup removes data.
+- Connected clients receive posts_updated after cleanup.
+
+
+9. USER INTERFACE
+-----------------
+Main interface sections:
+- Sticky navigation header
+- Campus Pulse branding
+- Campus Events tab
+- Lost and Found tab
+- Search area
+- Create post modal
+- Event cards
+- Lost-and-found cards
+- Event details modal
+- Poster preview modal
+- Sidebar navigation
+- Admin dashboard
+- Club dashboard
+- Toast notifications
+- Light and dark theme controls
+
+Design characteristics:
+- Responsive layouts
+- Tailwind CSS utility classes
+- Inter font
+- JetBrains Mono font
+- Campus red branding color: #CC0000
+- Rounded cards
+- Backdrop blur
+- Glassmorphism effects
+- Animated transitions
+- Mobile-friendly grids
+
+
+10. PROGRESSIVE WEB APP CONFIGURATION
+--------------------------------------
+The web app manifest is located at:
+public/manifest.json
+
+Application name:
+Campus Pulse
+
+Short name:
+CampusPulse
+
+Display mode:
+standalone
+
+Start URL:
+/
+
+
+11. COMMANDS
+------------
+
+Install dependencies:
+npm install
+
+Start development server:
+npm run dev
+
+Start server:
+npm start
+
+Build production frontend:
+npm run build
+
+Preview Vite build:
+npm run preview
+
+Run tests:
+npm test
+
+Run TypeScript type checking:
+npm run lint
+
+Default server URL:
+http://localhost:3000
+
+
+12. TESTING STATUS
+------------------
+The test file is:
+src/lifecycle.test.ts
+
+The test suite covers:
+- Default event times.
+- Event date validation.
+- End-date validation.
+- Registration deadline validation.
+- Four-day event retention.
+- Lost-and-found retention behavior.
+- UTC conversion.
+- Single-day event filtering.
+- Multi-day event filtering.
+
+Latest verification:
+- 16 tests passed.
+- TypeScript type checking passed.
+- Production build passed.
+
+
+13. ENVIRONMENT CONFIGURATION
+-----------------------------
+Environment template:
+.env.example
+
+Google Analytics configuration variable:
+VITE_GOOGLE_TAG_ID
+
+Google Analytics is configured in:
+index.html
+
+
+14. SECURITY CONSIDERATIONS
+---------------------------
+The current project uses basic authorization and is suitable for a prototype
+or academic project, but additional security is required for production.
+
+Current limitations:
+- Admin authorization uses the hardcoded value admin-secret.
+- Admin and club access are based on email values stored in browser session
+  storage.
+- There is no password authentication.
+- There are no JWT tokens or server-side sessions.
+- Email addresses are not verified.
+- Socket.IO allows all origins.
+- User images are stored directly in SQLite.
+- Rate limiting is limited to a one-minute duplicate-post check.
+
+Recommended production improvements:
+- Secure user authentication.
+- Password hashing.
+- Role-based access control.
+- JWT or secure session authentication.
+- Environment-based secrets.
+- CSRF protection.
+- Request rate limiting.
+- Input sanitization.
+- File type validation.
+- Restricted CORS origins.
+- HTTPS.
+- Database backups and migrations.
+
+
+15. CURRENT LIMITATIONS
+-----------------------
+1. Event registration uses external URLs and is not stored internally.
+2. Club dashboard views and registration counts are placeholders.
+3. Authentication is based on email strings rather than verified accounts.
+4. The declared Google Gemini package is not currently used.
+5. Some reusable components exist separately while equivalent UI logic is
+   also implemented directly in App.tsx.
+6. SQLite is local and is not intended for horizontal scaling.
+7. Base64 image storage can increase database size.
+8. Automated end-to-end browser tests are not currently included.
+9. Email and push notifications are not implemented.
+10. User accounts and profiles are not implemented.
+
+
+16. FUTURE ENHANCEMENTS
+-----------------------
+- College email verification.
+- Student and club account registration.
+- Internal event registration.
+- Attendance tracking.
+- Email and push notifications.
+- Advanced analytics.
+- Cloud image storage.
+- PostgreSQL or MongoDB for scalable deployment.
+- Full-text search.
+- Location-based event discovery.
+- React Native mobile application.
+- Report resolution workflow.
+- Automated image moderation.
+- User profiles and post ownership management.
+- Production-grade authentication and authorization.
+
+
+17. REPORT SUMMARY
+------------------
+Campus Pulse is a full-stack, real-time campus communication platform
+developed using React, TypeScript, Vite, Tailwind CSS, Node.js, Express,
+Socket.IO, and SQLite. It provides centralized campus event publishing,
+event discovery, registration links, lost-and-found management, post
+reporting, administrative moderation, club dashboards, theme customization,
+image uploads, date filtering, real-time synchronization, and automated
+content cleanup. The REST API manages posts and moderation operations, while
+Socket.IO broadcasts changes to connected clients. The application includes
+client-side and server-side validation, UTC timestamp normalization,
+responsive interface design, and automatic lifecycle management for expired
+content.
