@@ -84,25 +84,6 @@ export const AdminDashboard = ({ onClose }: { onClose: () => void }) => {
     });
   };
 
-  const [isTestingPush, setIsTestingPush] = useState(false);
-
-  const sendTestPush = async () => {
-    setIsTestingPush(true);
-    try {
-      const res = await fetch("/test-push");
-      const data = await res.json();
-      if (res.ok) {
-        alert(`Test push sent successfully to ${data.results.success} subscribers!`);
-      } else {
-        alert("Failed to send test push.");
-      }
-    } catch (err) {
-      alert("Network error while sending test push.");
-    } finally {
-      setIsTestingPush(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 sm:p-6">
       {deleteId && (
@@ -269,14 +250,6 @@ export const AdminDashboard = ({ onClose }: { onClose: () => void }) => {
         </div>
 
         <div className="p-6 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <button
-            onClick={sendTestPush}
-            disabled={isTestingPush}
-            className="flex items-center gap-2 px-4 py-2 bg-cu-red hover:opacity-90 disabled:bg-slate-400 text-white rounded-md text-xs font-bold transition-all shadow-lg shadow-cu-red/20"
-          >
-            <ShieldCheck className="w-4 h-4" />
-            {isTestingPush ? "Sending..." : "Send Test Notification"}
-          </button>
           <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
             Confidential Admin Access • Campus Pulse Security
           </p>

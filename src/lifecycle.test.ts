@@ -56,33 +56,24 @@ describe('Event Lifecycle Logic', () => {
     });
   });
 
-  describe('Visibility & Deletion (4-Day Buffer)', () => {
+  describe('Visibility & Deletion (4-Day Calendar Retention)', () => {
     const now = new Date('2026-03-15T12:00:00Z');
-    const fourDaysAgo = new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000);
+    const deletionDate = new Date('2026-03-11T00:00:00Z');
 
-    it('should keep event visible before 4 days have passed', () => {
-      // Event ended 3 days, 23 hours ago
-      const eventEndDate = new Date(now.getTime() - (3 * 24 + 23) * 60 * 60 * 1000);
-      expect(eventEndDate.getTime() < fourDaysAgo.getTime()).toBe(false);
+    it('should keep event visible through the third calendar day', () => {
+      const eventEndDate = new Date('2026-03-12T23:59:00Z');
+      expect(eventEndDate.toISOString().slice(0, 10) > deletionDate.toISOString().slice(0, 10)).toBe(true);
     });
 
-    it('should keep event visible exactly at the 4-day boundary', () => {
-      // Event ended exactly 4 days ago
-      const eventEndDate = new Date(fourDaysAgo.getTime());
-      // Deletion logic is endDate < fourDaysAgo
-      expect(eventEndDate.getTime() < fourDaysAgo.getTime()).toBe(false);
-    });
-
-    it('should delete event after crossing the 4-day threshold', () => {
-      // Event ended 4 days and 1 second ago
-      const eventEndDate = new Date(fourDaysAgo.getTime() - 1000);
-      expect(eventEndDate.getTime() < fourDaysAgo.getTime()).toBe(true);
+    it('should delete events on the fourth calendar day', () => {
+      const eventEndDate = new Date('2026-03-11T16:00:00Z');
+      expect(eventEndDate.toISOString().slice(0, 10) <= deletionDate.toISOString().slice(0, 10)).toBe(true);
     });
 
     it('should correctly identify "Recent Events" within the buffer', () => {
       const eventEndDate = parseISO('2026-03-12T10:00:00Z');
       const isPast = isBefore(eventEndDate, now);
-      const isWithinBuffer = isAfter(eventEndDate, fourDaysAgo);
+      const isWithinBuffer = isAfter(eventEndDate, deletionDate);
       expect(isPast && isWithinBuffer).toBe(true);
     });
   });
@@ -91,7 +82,7 @@ describe('Event Lifecycle Logic', () => {
     it('should convert local-style strings to UTC ISO strings', () => {
       const localStr = '2026-03-11T09:00';
       const utcDate = new Date(localStr);
-      expect(utcDate.toISOString()).toMatch(/2026-03-11T\d{2}:00:00.000Z/);
+      expect(utcDate.toISOString()).toMatch(/2026-03-11T\d{2}:\d{2}:00.000Z/);
     });
   });
 

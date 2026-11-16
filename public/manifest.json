@@ -1,7 +1,7 @@
 {
   "name": "Campus Pulse",
   "short_name": "CampusPulse",
-  "description": "Real-time campus events and lost & found.",
+  "description": "Campus events and lost & found.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -19,4 +19,3 @@
     }
   ]
 }
-

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { io, Socket } from "socket.io-client";
+import { io } from "socket.io-client";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { ClubDashboard } from "./components/ClubDashboard";
 import { LostFoundIndicator } from "./components/LostFoundIndicator";
@@ -12,18 +12,15 @@ import {
   Search, 
   X, 
   Image as ImageIcon,
-  ChevronRight,
   AlertCircle,
   Package,
   Linkedin,
   Heart,
   Info,
-  Filter,
+  Filter, 
   ShieldCheck,
   Mail,
-  Key,
   CheckCircle2,
-  LogOut,
   Download,
   Sun,
   Moon,
@@ -377,36 +374,6 @@ const Sidebar = ({ isOpen, onClose, userEmail, setIsAdminOpen }: { isOpen: boole
                     Club Dashboard
                   </button>
                 )}
-                
-                {/* Notification Permission Button */}
-                {"Notification" in window && Notification.permission === "default" && (
-                  <button
-                    onClick={() => {
-                      Notification.requestPermission().then(permission => {
-                        if (permission === "granted") {
-                          new Notification("Notifications Enabled!", {
-                            body: "You will now receive updates for new events.",
-                            icon: "/favicon.ico"
-                          });
-                        }
-                      });
-                    }}
-                    className="mt-6 w-full flex items-center justify-center gap-2 rounded-md bg-cu-red-light dark:bg-red-900/20 border border-cu-red/20 text-cu-red hover:opacity-80 transition-all p-3 text-sm font-bold"
-                  >
-                    <div className="w-5 h-5 flex items-center justify-center overflow-hidden">
-                      <img 
-                        src="/logo.png" 
-                        alt="Logo" 
-                        className="w-full h-full object-contain"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = "https://picsum.photos/seed/college-logo/128/128";
-                        }}
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-                    Enable Notifications
-                  </button>
-                )}
               </div>
             </div>
           </div>
@@ -552,7 +519,7 @@ const PostCard = ({ post, onClick, onReportClick }: { post: Post; onClick: () =>
   );
 };
 
-const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }) => (
+const Modal = ({ isOpen, onClose, title, disclaimer, children }: { isOpen: boolean; onClose: () => void; title: string; disclaimer?: string; children: React.ReactNode }) => (
   <AnimatePresence>
     {isOpen && (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
@@ -570,8 +537,16 @@ const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean; onClose:
           transition={{ type: "spring", damping: 25, stiffness: 300 }}
           className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-slate-200 dark:border-white/10"
         >
-          <div className="px-8 py-6 border-b border-slate-100 dark:border-white/5 flex items-center justify-between bg-slate-50/30 dark:bg-slate-900/30">
-            <h2 className="text-2xl font-black text-slate-900 dark:text-slate-50 tracking-tight">{title}</h2>
+          <div className="px-8 py-6 border-b border-slate-100 dark:border-white/5 flex items-start justify-between gap-4 bg-slate-50/30 dark:bg-slate-900/30">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-2xl font-black text-slate-900 dark:text-slate-50 tracking-tight">{title}</h2>
+              {disclaimer && (
+                <p className="mt-3 flex w-full items-start gap-2.5 rounded-xl border-2 border-red-500 bg-red-50 px-3 py-2.5 text-[11px] font-bold leading-relaxed text-red-900 shadow-sm shadow-red-500/20 dark:border-red-400 dark:bg-red-950/60 dark:text-red-100">
+                  <AlertTriangle className="disclaimer-alert-icon mt-0.5 h-8 w-8 shrink-0" />
+                  <span className="min-w-0">{disclaimer}</span>
+                </p>
+              )}
+            </div>
             <button onClick={onClose} className="p-2.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full transition-all active:scale-90">
               <X className="w-5 h-5 text-slate-500 dark:text-slate-400" />
             </button>
@@ -585,120 +560,6 @@ const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean; onClose:
   </AnimatePresence>
 );
 
-// --- Notification Modal ---
-
-function urlBase64ToUint8Array(base64String: string) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding)
-    .replace(/\-/g, '+')
-    .replace(/_/g, '/');
-
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
-}
-
-const subscribeUser = async () => {
-  if ('serviceWorker' in navigator) {
-    try {
-      // Ensure service worker is registered and ready
-      const registration = await navigator.serviceWorker.register('/service-worker.js', {
-        scope: '/'
-      });
-      
-      // Wait for the service worker to be ready
-      await navigator.serviceWorker.ready;
-      
-      const response = await fetch('/api/vapid-public-key');
-      const { publicKey } = await response.json();
-      
-      // Check if already subscribed
-      const existingSubscription = await registration.pushManager.getSubscription();
-      if (existingSubscription) {
-        console.log('User is already subscribed');
-        return;
-      }
-
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey)
-      });
-
-      await fetch('/api/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscription })
-      });
-      
-      console.log('User subscribed successfully to Push API');
-    } catch (error) {
-      console.error('Failed to subscribe user to Push API:', error);
-    }
-  }
-};
-
-const NotificationModal = ({ onClose }: { onClose: () => void }) => {
-  const handleAllow = async () => {
-    try {
-      const permission = await Notification.requestPermission();
-      if (permission === "granted") {
-        await subscribeUser();
-      }
-    } catch (err) {
-      console.error("Error during notification permission request:", err);
-    } finally {
-      onClose();
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.9 }}
-        className="bg-white dark:bg-slate-900 rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-slate-200 dark:border-white/10 text-center"
-      >
-        <div className="w-16 h-16 flex items-center justify-center mx-auto mb-4 overflow-hidden">
-          <img 
-            src="/logo.png" 
-            alt="Logo" 
-            className="w-full h-full object-contain"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = "https://picsum.photos/seed/college-logo/128/128";
-            }}
-            referrerPolicy="no-referrer"
-          />
-        </div>
-        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
-          Enable Notifications?
-        </h3>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 font-medium">
-          Stay updated with the latest campus events and lost & found items instantly.
-        </p>
-        <div className="flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl text-sm font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          >
-            Later
-          </button>
-          <button
-            onClick={handleAllow}
-            className="flex-1 py-2.5 rounded-md text-sm font-bold bg-cu-red text-white hover:opacity-90 transition-colors shadow-lg shadow-cu-red/20"
-          >
-            Allow
-          </button>
-        </div>
-      </motion.div>
-    </div>
-  );
-};
-
 // --- Main App ---
 
 export default function App() {
@@ -707,20 +568,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<PostType>("event");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [showNotificationModal, setShowNotificationModal] = useState(false);
-
-  useEffect(() => {
-    if ("Notification" in window) {
-      if (Notification.permission === "default") {
-        const timer = setTimeout(() => {
-          setShowNotificationModal(true);
-        }, 3000);
-        return () => clearTimeout(timer);
-      } else if (Notification.permission === "granted") {
-        subscribeUser();
-      }
-    }
-  }, []);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [isPosterModalOpen, setIsPosterModalOpen] = useState(false);
@@ -735,21 +582,11 @@ export default function App() {
     }
   }, [notification]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [selectedDateFilter, setSelectedDateFilter] = useState<string | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     try {
       const savedTheme = localStorage.getItem("campus_pulse_theme");
       return savedTheme === "dark";
-    } catch (e) {
-      return false;
-    }
-  });
-
-  // Verification State
-  const [isVerified, setIsVerified] = useState(() => {
-    try {
-      return sessionStorage.getItem("campus_pulse_verified") === "true";
     } catch (e) {
       return false;
     }
@@ -770,7 +607,6 @@ export default function App() {
       localStorage.setItem("lostFoundSeen", "true");
     }
   };
-  const [verificationStep, setVerificationStep] = useState<"email" | "otp" | "password">("email");
   const [userEmail, setUserEmail] = useState(() => {
     try {
       return sessionStorage.getItem("campus_pulse_email") || "";
@@ -778,9 +614,6 @@ export default function App() {
       return "";
     }
   });
-  const [otpInput, setOtpInput] = useState("");
-  const [passwordInput, setPasswordInput] = useState("");
-  const [isVerifying, setIsVerifying] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form State
@@ -800,12 +633,6 @@ export default function App() {
   });
 
   useEffect(() => {
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-  }, []);
-
-  useEffect(() => {
     try {
       if (isDarkMode) {
         document.documentElement.classList.add("dark");
@@ -820,34 +647,21 @@ export default function App() {
   }, [isDarkMode]);
 
   useEffect(() => {
-    const newSocket = io();
-    setSocket(newSocket);
-
+    const socket = io();
     fetchPosts();
 
-    newSocket.on("new_post", (post: Post) => {
-      setPosts(prev => {
-        if (prev.some(p => p.id === post.id)) return prev;
-        return [post, ...prev];
-      });
-
-      // Browser Notification
-      if ("Notification" in window && Notification.permission === "granted") {
-        new Notification(`New ${post.type === 'event' ? 'Event' : 'Item'}`, {
-          body: post.title,
-          icon: "/favicon.ico"
-        });
-      }
+    socket.on("new_post", (post: Post) => {
+      setPosts(prev => prev.some(existingPost => existingPost.id === post.id)
+        ? prev
+        : [post, ...prev]);
     });
 
-    newSocket.on("posts_updated", () => {
-      fetchPosts();
-    });
+    socket.on("posts_updated", fetchPosts);
 
     return () => {
-      newSocket.close();
+      socket.close();
     };
-  }, [userEmail]);
+  }, []);
 
   const fetchPosts = async (retries = 3) => {
     try {
@@ -894,68 +708,6 @@ export default function App() {
     }
   };
 
-  const handleSendOtp = async () => {
-    const normalizedEmail = userEmail.toLowerCase().trim();
-    if (!normalizedEmail.endsWith("@cuchd.in")) {
-      setNotification("Only verified CUCHD college emails are allowed to post.");
-      return;
-    }
-
-    if (normalizedEmail === "admin@cuchd.in" || normalizedEmail === "csquare@cuchd.in") {
-      setVerificationStep("password");
-      return;
-    }
-
-    setIsVerifying(true);
-    try {
-      const res = await fetch("/api/auth/send-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: normalizedEmail }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setVerificationStep("otp");
-        setNotification(data.demo ? `OTP sent to ${userEmail} (Demo: ${data.demo})` : `OTP sent to ${userEmail}`);
-      } else {
-        setNotification(data.error || "Failed to send OTP.");
-      }
-    } catch (err) {
-      setNotification("Network error. Please try again.");
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
-  const handleAdminLogin = async () => {
-    setIsVerifying(true);
-    try {
-      const res = await fetch("/api/auth/admin-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: userEmail, password: passwordInput }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setIsVerified(true);
-        try {
-          sessionStorage.setItem("campus_pulse_verified", "true");
-          sessionStorage.setItem("campus_pulse_email", userEmail);
-          sessionStorage.setItem("campus_pulse_user_type", data.type);
-        } catch (e) {
-          console.error("Failed to save to sessionStorage", e);
-        }
-        setNotification("Logged in successfully.");
-      } else {
-        setNotification("Invalid password.");
-      }
-    } catch (err) {
-      setNotification("Login failed. Please try again.");
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
   const handleMarkAsCompleted = async (postId: number) => {
     try {
       const res = await fetch(`/api/posts/${postId}/status`, {
@@ -974,48 +726,6 @@ export default function App() {
     } catch (err) {
       setNotification("Failed to update status.");
     }
-  };
-
-  const handleVerifyOtp = async () => {
-    setIsVerifying(true);
-    try {
-      const res = await fetch("/api/auth/verify-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: userEmail, otp: otpInput }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setIsVerified(true);
-        try {
-          sessionStorage.setItem("campus_pulse_verified", "true");
-          sessionStorage.setItem("campus_pulse_email", userEmail);
-        } catch (e) {
-          console.error("Failed to save to sessionStorage", e);
-        }
-        setNotification("Email verified successfully! You can now post.");
-      } else {
-        setNotification(data.error || "Invalid OTP.");
-      }
-    } catch (err) {
-      setNotification("Verification failed. Please try again.");
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
-  const handleLogout = () => {
-    setIsVerified(false);
-    setUserEmail("");
-    setOtpInput("");
-    setVerificationStep("email");
-    try {
-      sessionStorage.removeItem("campus_pulse_verified");
-      sessionStorage.removeItem("campus_pulse_email");
-    } catch (e) {
-      console.error("Failed to remove from sessionStorage", e);
-    }
-    setNotification("Logged out successfully.");
   };
 
   const handleOpenCreateModal = () => {
@@ -1043,7 +753,10 @@ export default function App() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    let finalData = { ...formData, authorEmail: userEmail.toLowerCase().trim() };
+    let finalData = {
+      ...formData,
+      authorEmail: userEmail.toLowerCase().trim() || "anonymous@campuspulse.local"
+    };
 
     // Date Validation & Defaults
     // CRITICAL: All timestamps sent to the server MUST be in UTC ISO format.
@@ -1126,9 +839,13 @@ export default function App() {
           contactNumber: ""
         });
         fetchPosts();
+      } else {
+        const data = await res.json();
+        setNotification(data.error || "Failed to create post.");
       }
     } catch (err) {
       console.error("Failed to create post", err);
+      setNotification("Failed to create post. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -1308,15 +1025,6 @@ export default function App() {
               >
                 {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
-              {isVerified && (
-                <button 
-                  onClick={handleLogout}
-                  className="hidden sm:flex items-center gap-2 bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 px-4 py-2.5 rounded-xl font-bold text-xs hover:bg-slate-200 dark:hover:bg-white/10 transition-all"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span>Logout</span>
-                </button>
-              )}
               <button 
                 onClick={handleOpenCreateModal}
                 className="flex items-center gap-2 bg-cu-red text-white px-5 py-2.5 rounded-md font-bold text-sm hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-cu-red/20"
@@ -1607,143 +1315,10 @@ export default function App() {
       {/* Create Modal */}
       <Modal 
         isOpen={isCreateModalOpen} 
-        onClose={() => {
-          setIsCreateModalOpen(false);
-          // Reset verification if not completed
-          if (!isVerified) {
-            setVerificationStep("email");
-            setUserEmail("");
-            setOtpInput("");
-          }
-        }} 
-        title={!isVerified ? "Verification Required" : "Create New Post"}
+        onClose={() => setIsCreateModalOpen(false)}
+        title="Create New Post"
+        disclaimer="Your IP address will be shared with the DSW Team at Chandigarh University for every post you create. Please post thoughtfully and responsibly."
       >
-        {!isVerified ? (
-          <div className="space-y-8 py-4">
-            <div className="text-center space-y-3">
-              <div className="w-20 h-20 bg-green-50 dark:bg-green-900/30 rounded-[2rem] flex items-center justify-center mx-auto shadow-xl shadow-green-100/50 dark:shadow-none border border-green-100 dark:border-green-800">
-                <ShieldCheck className="w-10 h-10 text-green-600 dark:text-green-400" />
-              </div>
-              <h3 className="text-xl font-black text-slate-900 dark:text-slate-50 tracking-tight">Verified Posting Only</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 max-w-[280px] mx-auto font-medium leading-relaxed">
-                To keep our campus safe, only students with a <span className="text-green-600 dark:text-green-400 font-bold">@cuchd.in</span> email can post.
-              </p>
-            </div>
-
-            <div className="space-y-6">
-              {verificationStep === "email" ? (
-                <div className="space-y-4">
-                  <div>
-                    <label className="flex items-center gap-2 text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.15em] mb-2.5 ml-1">
-                      College Email
-                    </label>
-                    <div className="relative">
-                      <Mail className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 dark:text-slate-600" />
-                      <input
-                        type="email"
-                        placeholder="yourname@cuchd.in"
-                        className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-md pl-14 pr-5 py-4 text-sm font-medium focus:ring-4 focus:ring-cu-red/10 focus:border-cu-red outline-none transition-all placeholder:text-slate-300 dark:placeholder:text-slate-600 dark:text-slate-200"
-                        value={userEmail}
-                        onChange={(e) => setUserEmail(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleSendOtp}
-                    disabled={isVerifying || !userEmail}
-                    className="w-full bg-slate-900 dark:bg-slate-50 text-white dark:text-slate-900 py-4 rounded-2xl font-bold text-sm hover:bg-slate-800 dark:hover:bg-slate-200 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-slate-200 dark:shadow-none flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
-                  >
-                    {isVerifying ? (
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white dark:border-slate-900/30 dark:border-t-slate-900 rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        Send OTP
-                        <ChevronRight className="w-4 h-4" />
-                      </>
-                    )}
-                  </button>
-                </div>
-              ) : verificationStep === "password" ? (
-                <div className="space-y-4">
-                  <div>
-                    <label className="flex items-center gap-2 text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.15em] mb-2.5 ml-1">
-                      Admin Password
-                    </label>
-                    <div className="relative">
-                      <Key className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 dark:text-slate-600" />
-                      <input
-                        type="password"
-                        placeholder="Enter password"
-                        className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-md pl-14 pr-5 py-4 text-sm font-medium focus:ring-4 focus:ring-cu-red/10 focus:border-cu-red outline-none transition-all placeholder:text-slate-300 dark:placeholder:text-slate-600 dark:text-slate-200"
-                        value={passwordInput}
-                        onChange={(e) => setPasswordInput(e.target.value)}
-                      />
-                    </div>
-                    <button 
-                      onClick={() => setVerificationStep("email")}
-                      className="mt-3 text-[10px] font-bold text-cu-red uppercase tracking-widest hover:underline ml-1"
-                    >
-                      Change Email
-                    </button>
-                  </div>
-                  <button
-                    onClick={handleAdminLogin}
-                    disabled={isVerifying || !passwordInput}
-                    className="w-full bg-slate-900 dark:bg-slate-50 text-white dark:text-slate-900 py-4 rounded-2xl font-bold text-sm hover:bg-slate-800 dark:hover:bg-slate-200 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-slate-200 dark:shadow-none flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
-                  >
-                    {isVerifying ? (
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white dark:border-slate-900/30 dark:border-t-slate-900 rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        Login as Admin
-                        <ChevronRight className="w-4 h-4" />
-                      </>
-                    )}
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div>
-                    <label className="flex items-center gap-2 text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.15em] mb-2.5 ml-1">
-                      Enter 6-Digit OTP
-                    </label>
-                    <div className="relative">
-                      <Key className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 dark:text-slate-600" />
-                      <input
-                        type="text"
-                        maxLength={6}
-                        placeholder="000000"
-                        className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-md pl-14 pr-5 py-4 text-sm font-bold tracking-[0.5em] focus:ring-4 focus:ring-cu-red/10 focus:border-cu-red outline-none transition-all placeholder:text-slate-300 dark:placeholder:text-slate-600 placeholder:tracking-normal dark:text-slate-200"
-                        value={otpInput}
-                        onChange={(e) => setOtpInput(e.target.value)}
-                      />
-                    </div>
-                    <button 
-                      onClick={() => setVerificationStep("email")}
-                      className="mt-3 text-[10px] font-bold text-cu-red uppercase tracking-widest hover:underline ml-1"
-                    >
-                      Change Email
-                    </button>
-                  </div>
-                  <button
-                    onClick={handleVerifyOtp}
-                    disabled={otpInput.length !== 6}
-                    className="w-full bg-cu-red text-white py-4 rounded-md font-bold text-sm hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-cu-red/10 flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
-                  >
-                    Verify & Continue
-                    <CheckCircle2 className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="bg-slate-50 dark:bg-slate-900/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-800">
-              <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest text-center leading-relaxed">
-                Your email will be visible below your post to ensure accountability and facilitate communication.
-              </p>
-            </div>
-          </div>
-        ) : (
           <form onSubmit={handleSubmit} className="space-y-8">
           <div className="grid grid-cols-2 gap-3 p-1.5 bg-slate-100/80 dark:bg-slate-900/50 rounded-2xl border border-slate-200/50 dark:border-slate-700/50">
             <button
@@ -1840,6 +1415,20 @@ export default function App() {
                 className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-md px-5 py-4 text-sm font-medium focus:ring-4 focus:ring-cu-red/10 focus:border-cu-red outline-none transition-all placeholder:text-slate-300 dark:placeholder:text-slate-600 dark:text-slate-200"
                 value={formData.location}
                 onChange={e => setFormData(prev => ({ ...prev, location: e.target.value }))}
+              />
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.15em] mb-2.5 ml-1">
+                <Mail className="w-3.5 h-3.5" />
+                Contact Email <span className="normal-case tracking-normal font-medium">(Optional)</span>
+              </label>
+              <input
+                type="email"
+                placeholder="your@email.com"
+                className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-md px-5 py-4 text-sm font-medium focus:ring-4 focus:ring-cu-red/10 focus:border-cu-red outline-none transition-all placeholder:text-slate-300 dark:placeholder:text-slate-600 dark:text-slate-200"
+                value={userEmail}
+                onChange={e => setUserEmail(e.target.value)}
               />
             </div>
 
@@ -1989,7 +1578,6 @@ export default function App() {
             )}
           </button>
         </form>
-      )}
     </Modal>
 
       {/* Details Modal */}
@@ -2245,12 +1833,6 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Notification Modal */}
-      <AnimatePresence>
-        {showNotificationModal && (
-          <NotificationModal onClose={() => setShowNotificationModal(false)} />
-        )}
-      </AnimatePresence>
 
       {/* Poster Full View Modal */}
       <AnimatePresence>

@@ -6,21 +6,10 @@ import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import cron from "node-cron";
-import webpush from "web-push";
 
 dotenv.config();
-
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "BKs2vhZ-45DmcCoDSRwR1-zBcnQ2r4u0VXWIyVGeEbzPSpB-gzlUBImNZ2y8knKFdHsm2a07amTazJibjPiHUII";
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "gxIlV1ZMPIxC_M2JrUFq47II2_YgnTbSfxb2Q_3CBLk";
-
-webpush.setVapidDetails(
-  "mailto:activerohit001@gmail.com",
-  VAPID_PUBLIC_KEY,
-  VAPID_PRIVATE_KEY
-);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let db: any;
@@ -46,14 +35,6 @@ const initializeDb = (database: any) => {
       createdAt TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE TABLE IF NOT EXISTS otps (
-      email TEXT PRIMARY KEY,
-      otp TEXT NOT NULL,
-      expiresAt INTEGER NOT NULL,
-      requestCount INTEGER DEFAULT 1,
-      lastRequestAt INTEGER NOT NULL
-    );
-
     CREATE TABLE IF NOT EXISTS reports (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       postId INTEGER NOT NULL,
@@ -63,13 +44,6 @@ const initializeDb = (database: any) => {
       FOREIGN KEY(postId) REFERENCES posts(id)
     );
 
-    CREATE TABLE IF NOT EXISTS push_subscriptions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      endpoint TEXT UNIQUE NOT NULL,
-      p256dh TEXT NOT NULL,
-      auth TEXT NOT NULL,
-      createdAt TEXT DEFAULT CURRENT_TIMESTAMP
-    );
   `);
 
   // Migration for existing databases
@@ -100,7 +74,6 @@ async function startServer() {
       origin: "*",
     },
   });
-
   app.use(express.json({ limit: "10mb" }));
 
   // Global logging middleware
@@ -129,222 +102,6 @@ async function startServer() {
     });
   });
 
-  // Email Transporter
-  let transporter: any;
-  try {
-    transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
-  } catch (err) {
-    console.error("Transporter initialization failed:", err);
-  }
-
-  // OTP Endpoints
-  app.post("/api/auth/send-otp", async (req, res) => {
-    let { email } = req.body;
-    if (email) email = email.toLowerCase().trim();
-
-    if (!email || !email.endsWith("@cuchd.in")) {
-      return res.status(400).json({ error: "Only verified CUCHD college emails are allowed to post." });
-    }
-
-    const now = Date.now();
-    const tenMinutesAgo = now - 10 * 60 * 1000;
-    const expiry = now + 5 * 60 * 1000; // 5 minutes
-
-    // Check rate limit
-    const existing = db.prepare("SELECT * FROM otps WHERE email = ?").get(email) as any;
-    
-    if (existing) {
-      if (existing.lastRequestAt > tenMinutesAgo && existing.requestCount >= 3) {
-        return res.status(429).json({ error: "Too many OTP requests. Please try again in 10 minutes." });
-      }
-
-      const newCount = existing.lastRequestAt > tenMinutesAgo ? existing.requestCount + 1 : 1;
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-      db.prepare(`
-        UPDATE otps 
-        SET otp = ?, expiresAt = ?, requestCount = ?, lastRequestAt = ? 
-        WHERE email = ?
-      `).run(otp, expiry, newCount, now, email);
-
-      // Send Email
-      try {
-        if (process.env.SMTP_HOST) {
-          await transporter.sendMail({
-            from: process.env.SMTP_FROM || '"Campus Pulse" <activerohit001@gmail.com>',
-            to: email,
-            subject: "Campus Pulse - Verification Code",
-            html: `
-              <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px; max-width: 400px;">
-                <h2 style="color: #4f46e5; margin-top: 0;">Campus Pulse</h2>
-                <p>Hello student,</p>
-                <p>Your verification code for Campus Pulse is:</p>
-                <div style="background: #f3f4f6; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; border-radius: 8px; margin: 20px 0;">
-                  ${otp}
-                </div>
-                <p style="font-size: 12px; color: #6b7280;">This code will expire in 5 minutes. If you didn't request this, please ignore this email.</p>
-              </div>
-            `,
-          });
-        } else {
-          console.log(`[DEMO MODE] OTP for ${email}: ${otp}`);
-        }
-        res.json({ success: true, demo: !process.env.SMTP_HOST ? otp : undefined });
-      } catch (error) {
-        console.error("Email error:", error);
-        res.status(500).json({ error: "Failed to send email." });
-      }
-    } else {
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      db.prepare(`
-        INSERT INTO otps (email, otp, expiresAt, requestCount, lastRequestAt)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(email, otp, expiry, 1, now);
-
-      try {
-        if (process.env.SMTP_HOST) {
-          await transporter.sendMail({
-            from: process.env.SMTP_FROM || '"Campus Pulse" <activerohit001@gmail.com>',
-            to: email,
-            subject: "Campus Pulse - Verification Code",
-            html: `
-              <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px; max-width: 400px;">
-                <h2 style="color: #4f46e5; margin-top: 0;">Campus Pulse</h2>
-                <p>Hello student,</p>
-                <p>Your verification code for Campus Pulse is:</p>
-                <div style="background: #f3f4f6; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; border-radius: 8px; margin: 20px 0;">
-                  ${otp}
-                </div>
-                <p style="font-size: 12px; color: #6b7280;">This code will expire in 5 minutes. If you didn't request this, please ignore this email.</p>
-              </div>
-            `,
-          });
-        } else {
-          console.log(`[DEMO MODE] OTP for ${email}: ${otp}`);
-        }
-        res.json({ success: true, demo: !process.env.SMTP_HOST ? otp : undefined });
-      } catch (error) {
-        console.error("Email error:", error);
-        res.status(500).json({ error: "Failed to send email." });
-      }
-    }
-  });
-
-  app.post("/api/auth/verify-otp", (req, res) => {
-    let { email, otp } = req.body;
-    if (email) email = email.toLowerCase().trim();
-    const now = Date.now();
-
-    const record = db.prepare("SELECT * FROM otps WHERE email = ?").get(email) as any;
-
-    if (!record || record.otp !== otp) {
-      return res.status(400).json({ error: "Invalid OTP." });
-    }
-
-    if (record.expiresAt < now) {
-      return res.status(400).json({ error: "OTP has expired." });
-    }
-
-    // Success - clean up OTP
-    db.prepare("DELETE FROM otps WHERE email = ?").run(email);
-    res.json({ success: true });
-  });
-
-  app.post("/api/auth/admin-login", (req, res) => {
-    let { email, password } = req.body;
-    if (email) email = email.toLowerCase().trim();
-    if (email === "admin@cuchd.in" && password === "122279") {
-      res.json({ success: true, type: "admin" });
-    } else if (email === "csquare@cuchd.in" && password === "000000") {
-      res.json({ success: true, type: "club" });
-    } else {
-      res.status(401).json({ error: "Invalid credentials" });
-    }
-  });
-
-  // Push Notification Endpoints
-  app.get("/api/vapid-public-key", (req, res) => {
-    res.json({ publicKey: VAPID_PUBLIC_KEY });
-  });
-
-  app.post("/api/subscribe", (req, res) => {
-    const { subscription } = req.body;
-    if (!subscription || !subscription.endpoint || !subscription.keys) {
-      return res.status(400).json({ error: "Invalid subscription" });
-    }
-
-    try {
-      // Use INSERT OR REPLACE to update keys if endpoint already exists
-      db.prepare(`
-        INSERT OR REPLACE INTO push_subscriptions (endpoint, p256dh, auth)
-        VALUES (?, ?, ?)
-      `).run(subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth);
-      console.log(`[Push] New subscription stored: ${subscription.endpoint.substring(0, 30)}...`);
-      res.status(201).json({ success: true });
-    } catch (error) {
-      console.error("[Push] Subscription error:", error);
-      res.status(500).json({ error: "Failed to store subscription" });
-    }
-  });
-
-  // Test Push Endpoint
-  app.get("/test-push", async (req, res) => {
-    try {
-      const subscriptions = db.prepare("SELECT * FROM push_subscriptions").all();
-      console.log(`[Push Test] Sending test notification to ${subscriptions.length} subscribers`);
-      
-      const payload = JSON.stringify({
-        title: "Test Notification",
-        body: "This is a test notification from Campus Pulse!",
-        url: "/"
-      });
-
-      let successCount = 0;
-      let failureCount = 0;
-
-      const pushPromises = subscriptions.map((sub: any) => {
-        const pushSubscription = {
-          endpoint: sub.endpoint,
-          keys: {
-            p256dh: sub.p256dh,
-            auth: sub.auth
-          }
-        };
-
-        return webpush.sendNotification(pushSubscription, payload)
-          .then(() => {
-            successCount++;
-          })
-          .catch((error) => {
-            failureCount++;
-            if (error.statusCode === 404 || error.statusCode === 410) {
-              console.log(`[Push Test] Removing expired subscription: ${sub.endpoint.substring(0, 30)}...`);
-              db.prepare("DELETE FROM push_subscriptions WHERE endpoint = ?").run(sub.endpoint);
-            } else {
-              console.error("[Push Test] Error sending notification:", error.message || error);
-            }
-          });
-      });
-
-      await Promise.allSettled(pushPromises);
-      
-      res.json({ 
-        success: true, 
-        message: `Test push initiated for ${subscriptions.length} subscribers`,
-        results: { success: successCount, failure: failureCount }
-      });
-    } catch (error) {
-      console.error("[Push Test] Failed to execute test push:", error);
-      res.status(500).json({ error: "Failed to send test push" });
-    }
-  });
-
   // API Routes
   app.get("/api/posts", (req, res) => {
     console.log("[Server] GET /api/posts requested");
@@ -354,8 +111,8 @@ async function startServer() {
         return res.status(500).json({ error: "Database not initialized" });
       }
       
-      // Events remain visible for 4 days after their end date.
-      // We use UTC normalization to avoid timezone-related visibility bugs.
+      // Events remain visible through the third calendar day after their end date.
+      // They are removed at the start of the fourth calendar day.
       const cutoff = new Date();
       cutoff.setUTCDate(cutoff.getUTCDate() - 4);
       cutoff.setUTCHours(0, 0, 0, 0);
@@ -364,7 +121,7 @@ async function startServer() {
       const query = `
         SELECT * FROM posts 
         WHERE 
-          (type = 'event' AND endDate IS NOT NULL AND endDate >= ?)
+          (type = 'event' AND endDate IS NOT NULL AND date(endDate) > date(?))
           OR type != 'event'
         ORDER BY isPinned DESC, createdAt DESC
       `;
@@ -382,8 +139,7 @@ async function startServer() {
       let { 
         type, title, organizer, location, description, 
         poster, eventDate, endDate, registrationDeadline,
-        registrationLink, status, contactNumber, authorEmail,
-        notificationTitle, notificationBody, notificationUrl
+        registrationLink, status, contactNumber, authorEmail
       } = req.body;
 
       // Basic spam filtering: check if the same user has posted in the last minute
@@ -452,48 +208,7 @@ async function startServer() {
         createdAt: new Date().toISOString() // Stored as UTC ISO
       };
       
-      // Broadcast to all clients
       io.emit("new_post", newPost);
-      
-      // Send Push Notifications to all subscribers (Only for events as per strict requirements)
-      if (type === "event") {
-        try {
-          const subscriptions = db.prepare("SELECT * FROM push_subscriptions").all();
-          console.log(`[Push] Sending notification for new event to ${subscriptions.length} subscribers`);
-          
-          const payload = JSON.stringify({
-            title: notificationTitle || "New Event Posted",
-            body: notificationBody || title,
-            url: notificationUrl || "/" 
-          });
-
-          subscriptions.forEach((sub: any) => {
-            const pushSubscription = {
-              endpoint: sub.endpoint,
-              keys: {
-                p256dh: sub.p256dh,
-                auth: sub.auth
-              }
-            };
-
-            webpush.sendNotification(pushSubscription, payload)
-              .then(() => {
-                console.log(`[Push] Successfully sent to: ${sub.endpoint.substring(0, 30)}...`);
-              })
-              .catch((error) => {
-                if (error.statusCode === 404 || error.statusCode === 410) {
-                  console.log(`[Push] Removing expired subscription: ${sub.endpoint.substring(0, 30)}...`);
-                  db.prepare("DELETE FROM push_subscriptions WHERE endpoint = ?").run(sub.endpoint);
-                } else {
-                  console.error("[Push] Notification error:", error.message || error);
-                }
-              });
-          });
-        } catch (pushError) {
-          console.error("[Push] Failed to initiate push notifications:", pushError);
-        }
-      }
-      
       res.json(newPost);
     } catch (error) {
       console.error("Error creating post:", error);
@@ -505,6 +220,7 @@ async function startServer() {
     try {
       db.prepare("DELETE FROM reports WHERE postId = ?").run(req.params.id);
       db.prepare("DELETE FROM posts WHERE id = ?").run(req.params.id);
+      io.emit("posts_updated");
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting post:", error);
@@ -637,6 +353,7 @@ async function startServer() {
     }
     db.prepare("DELETE FROM reports WHERE postId = ?").run(req.params.id);
     db.prepare("DELETE FROM posts WHERE id = ?").run(req.params.id);
+    io.emit("posts_updated");
     res.json({ success: true });
   });
 
@@ -647,17 +364,32 @@ async function startServer() {
     const timestamp = now.toISOString();
     
     try {
-      // Rule 1: Event posts are NOT hard-deleted even after they expire (as per strict requirements).
-      // They are filtered out in the API queries instead.
-      
-      // Rule 2: Lost and found posts older than 72 hours (3 days) are removed.
+      // Events ending four or more calendar days ago are permanently removed.
+      // Deleting the post row also removes any base64 poster stored with it.
+      const fourCalendarDaysAgo = new Date(now);
+      fourCalendarDaysAgo.setUTCDate(fourCalendarDaysAgo.getUTCDate() - 4);
+      fourCalendarDaysAgo.setUTCHours(0, 0, 0, 0);
+      const expiredEvents = db.prepare(`
+        SELECT id FROM posts
+        WHERE type = 'event'
+          AND endDate IS NOT NULL
+          AND date(endDate) <= date(?)
+      `).all(fourCalendarDaysAgo.toISOString()) as Array<{ id: number }>;
+
+      for (const event of expiredEvents) {
+        db.prepare("DELETE FROM reports WHERE postId = ?").run(event.id);
+        db.prepare("DELETE FROM posts WHERE id = ?").run(event.id);
+      }
+
+      // Lost and found posts older than 72 hours (3 days) are removed.
       const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString();
       const lostFoundResult = db.prepare("DELETE FROM posts WHERE type = 'lost_found' AND createdAt < ?").run(threeDaysAgo);
-      
-      const totalChanges = lostFoundResult.changes;
+
+      const totalChanges = expiredEvents.length + lostFoundResult.changes;
       
       if (totalChanges > 0) {
-        console.log(`[Cleanup Job] Executed at ${timestamp}, deleted ${lostFoundResult.changes} old lost/found posts.`);
+        db.exec("VACUUM");
+        console.log(`[Cleanup Job] Executed at ${timestamp}, deleted ${expiredEvents.length} expired events and ${lostFoundResult.changes} old lost/found posts.`);
         io.emit("posts_updated");
       } else {
         console.log(`[Cleanup Job] Executed at ${timestamp}, no expired content found.`);
